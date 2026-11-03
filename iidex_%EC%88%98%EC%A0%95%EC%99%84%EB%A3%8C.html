@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대통령 업적 분류함</title>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 30px 15px;
+            font-family: 'Malgun Gothic', sans-serif;
+            background: #f1f4f8;
+            color: #263445;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 30px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            text-align: center;
+            color: #17365d;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 9px;
+            font-weight: bold;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 13px;
+            margin-bottom: 22px;
+            border: 1px solid #ccd5df;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+        }
+
+        textarea {
+            height: 160px;
+            resize: vertical;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #315b91;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #234b78;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover { background: #17365d; }
+
+        button:disabled {
+            background: #8998a8;
+            cursor: not-allowed;
+        }
+
+        h2 {
+            margin-top: 35px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #234b78;
+            color: #17365d;
+        }
+
+        .result {
+            margin-top: 15px;
+            padding: 17px;
+            background: #f5f7fa;
+            border-left: 4px solid #315b91;
+            border-radius: 7px;
+        }
+
+        .category {
+            display: inline-block;
+            padding: 5px 10px;
+            margin-bottom: 10px;
+            background: #dce8f5;
+            color: #234b78;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .result h3 { margin: 5px 0 10px; }
+
+        .result p {
+            line-height: 1.7;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .empty {
+            color: #888;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .status {
+            margin-top: 15px;
+            text-align: center;
+            font-weight: bold;
+            line-height: 1.5;
+        }
+
+        .date {
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        #saveFrame { display: none; }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>대통령 업적 분류함</h1>
+
+        <form id="achievementForm">
+            <label for="category">업적 분류</label>
+            <select id="category" required>
+                <option value="">분류를 선택하세요</option>
+                <option value="정치">정치</option>
+                <option value="경제">경제</option>
+                <option value="국방">국방</option>
+                <option value="민생">민생</option>
+                <option value="기타">기타</option>
+            </select>
+
+            <label for="title">업적 제목</label>
+            <input
+                type="text"
+                id="title"
+                placeholder="업적 제목을 입력하세요."
+                required
+            >
+
+            <label for="content">업적 내용</label>
+            <textarea
+                id="content"
+                placeholder="대통령의 업적 내용을 입력하세요."
+                required
+            ></textarea>
+
+            <button type="submit" id="submitButton">업적 제출하기</button>
+        </form>
+
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+
+        <h2>제출된 업적 목록</h2>
+
+        <div id="resultList">
+            <p class="empty">저장된 업적을 불러오는 중입니다.</p>
+        </div>
+    </div>
+
+    <iframe name="saveFrame" id="saveFrame" title="업적 저장 처리"></iframe>
+
+    <script>
+        // 새로 배포한 Apps Script 웹 앱 주소
+        const SCRIPT_URL =
+            'https://script.google.com/macros/s/AKfycbxHFyiWHCLSP1JASemupTtzQFlQP4_1pA-nr_OZopYS5w4k1o3keMhVsxuG-j0vcOPb_w/exec';
+
+        const form = document.getElementById('achievementForm');
+        const resultList = document.getElementById('resultList');
+        const statusBox = document.getElementById('status');
+        const submitButton = document.getElementById('submitButton');
+        const saveFrame = document.getElementById('saveFrame');
+
+        let isSubmitting = false;
+        let pendingData = null;
+        let requestStarted = false;
+
+        // 업적 제출
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            if (isSubmitting) return;
+
+            const data = {
+                category: document.getElementById('category').value,
+                title: document.getElementById('title').value.trim(),
+                content: document.getElementById('content').value.trim()
+            };
+
+            if (!data.category || !data.title || !data.content) {
+                alert('모든 항목을 입력해 주세요.');
+                return;
+            }
+
+            isSubmitting = true;
+            requestStarted = true;
+            pendingData = data;
+
+            submitButton.disabled = true;
+            submitButton.textContent = '저장 중...';
+            statusBox.textContent = '스프레드시트에 저장하고 있습니다.';
+            statusBox.style.color = '#234b78';
+
+            const sendForm = document.createElement('form');
+            sendForm.method = 'POST';
+            sendForm.action = SCRIPT_URL;
+            sendForm.target = 'saveFrame';
+            sendForm.acceptCharset = 'UTF-8';
+            sendForm.style.display = 'none';
+
+            Object.entries(data).forEach(function(entry) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = entry[0];
+                input.value = entry[1];
+                sendForm.appendChild(input);
+            });
+
+            document.body.appendChild(sendForm);
+            sendForm.submit();
+
+            // 전송 폼은 제출 후 제거해도 iframe 요청에는 영향이 없습니다.
+            setTimeout(function() {
+                sendForm.remove();
+            }, 1000);
+
+            // 응답/목록 확인이 되지 않는 경우 무한히 '저장 중'에 머무르지 않도록 처리
+            setTimeout(function() {
+                if (isSubmitting && requestStarted) {
+                    isSubmitting = false;
+                    requestStarted = false;
+                    submitButton.disabled = false;
+                    submitButton.textContent = '업적 제출하기';
+                    statusBox.textContent =
+                        '저장 요청 후 확인 시간이 초과되었습니다. 시트에 기록됐는지 확인한 뒤, 중복 제출에 주의해 주세요.';
+                    statusBox.style.color = '#b45309';
+                }
+            }, 20000);
+        });
+
+        // iframe 응답이 도착하면 시트 목록을 다시 읽어 실제 저장 여부 확인
+        saveFrame.addEventListener('load', function() {
+            if (!isSubmitting || !requestStarted || !pendingData) return;
+
+            requestStarted = false;
+
+            loadAchievements(function(data) {
+                const saved = Array.isArray(data) && data.some(function(item) {
+                    return item.category === pendingData.category &&
+                           item.title === pendingData.title &&
+                           item.content === pendingData.content;
+                });
+
+                if (saved) {
+                    form.reset();
+                    statusBox.textContent =
+                        '저장 완료! 업적이 스프레드시트에 저장되었습니다.';
+                    statusBox.style.color = 'green';
+                    displayAchievements(data);
+                } else {
+                    statusBox.textContent =
+                        '저장 응답은 받았지만 목록에서 해당 업적을 확인하지 못했습니다. 스프레드시트를 확인해 주세요.';
+                    statusBox.style.color = '#b45309';
+                    if (Array.isArray(data)) displayAchievements(data);
+                }
+
+                isSubmitting = false;
+                pendingData = null;
+                submitButton.disabled = false;
+                submitButton.textContent = '업적 제출하기';
+            });
+        });
+
+        // JSONP 방식으로 Apps Script에서 업적 목록 가져오기
+        function loadAchievements(callback) {
+            const callbackName =
+                'achievementCallback_' + Date.now() + '_' +
+                Math.floor(Math.random() * 100000);
+
+            const script = document.createElement('script');
+            let finished = false;
+
+            const cleanup = function() {
+                if (finished) return;
+                finished = true;
+                delete window[callbackName];
+                script.remove();
+            };
+
+            window[callbackName] = function(data) {
+                if (finished) return;
+                displayAchievements(data);
+                cleanup();
+                if (typeof callback === 'function') callback(data);
+            };
+
+            script.onerror = function() {
+                if (finished) return;
+                cleanup();
+                if (typeof callback === 'function') callback(null);
+                else {
+                    resultList.innerHTML =
+                        '<p class="empty">업적 목록을 불러오지 못했습니다. Apps Script 배포 권한과 doGet 코드를 확인해 주세요.</p>';
+                }
+            };
+
+            script.src =
+                SCRIPT_URL +
+                '?callback=' + encodeURIComponent(callbackName) +
+                '&t=' + Date.now();
+
+            document.body.appendChild(script);
+        }
+
+        // 화면에 업적 목록 표시
+        function displayAchievements(data) {
+            resultList.innerHTML = '';
+
+            if (!Array.isArray(data) || data.length === 0) {
+                resultList.innerHTML =
+                    '<p class="empty">아직 제출된 업적이 없습니다.</p>';
+                return;
+            }
+
+            data.forEach(function(item) {
+                const result = document.createElement('div');
+                result.className = 'result';
+
+                const categoryLabel = document.createElement('span');
+                categoryLabel.className = 'category';
+                categoryLabel.textContent = item.category || '';
+
+                const dateElement = document.createElement('div');
+                dateElement.className = 'date';
+                dateElement.textContent = item.date || '';
+
+                const titleElement = document.createElement('h3');
+                titleElement.textContent = item.title || '';
+
+                const contentElement = document.createElement('p');
+                contentElement.textContent = item.content || '';
+
+                result.appendChild(categoryLabel);
+                result.appendChild(dateElement);
+                result.appendChild(titleElement);
+                result.appendChild(contentElement);
+
+                resultList.appendChild(result);
+            });
+        }
+
+        // 페이지를 열 때 기존 저장 목록 표시
+        loadAchievements();
+    </script>
+</body>
+</html>
